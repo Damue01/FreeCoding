@@ -1,0 +1,17 @@
+{
+  "name": "美团问小团",
+  "app_id": "com.sankuai.meituan",
+  "question_channel": "text",
+  "navigation": [],
+  "submit": {"action": "tap_text", "text": "发送", "timeout": 8},
+  "response_initial_wait_seconds": 1,
+  "response_timeout_seconds": 60,
+  "response_poll_interval": 0.8,
+  "response_stable_polls": 2,
+  "response_min_chars": 4,
+  "visual_fallback_delay_seconds": 20,
+  "ocr_region": [0, 160, 1440, 2900],
+  "ignore_patterns": ["^\\d{1,2}:\\d{2}$", "^\\d{1,3}%$"],
+  "recording": true,
+  "extraction": ["clipboard", "control", "ocr"]
+}

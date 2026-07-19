@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FreeCoding</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0e1015;--panel:#181b22;--line:#2c313c;--accent:#ff7043;--muted:#9ba3b4}
+    *{box-sizing:border-box}[hidden]{display:none!important}
+    body{margin:0;background:var(--bg);color:#eef1f7;font:15px/1.5 system-ui,"Microsoft YaHei",sans-serif}
+    header{height:64px;display:flex;align-items:center;padding:0 24px;border-bottom:1px solid var(--line)}
+    h1{font-size:18px;margin:0}
+    main{display:grid;grid-template-columns:330px minmax(360px,540px) 1fr;gap:18px;padding:18px;height:calc(100vh - 64px)}
+    section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;overflow:auto}
+    .phone{padding:0;display:grid;place-items:center;background:#0a0b0e;min-width:0}
+    .frame-stage{position:relative;width:100%;height:100%;display:grid;place-items:center;overflow:hidden}
+    .phone img{height:100%;max-height:calc(100vh - 102px);max-width:100%;object-fit:contain}
+    .click-ripple{position:absolute;width:44px;height:44px;border:3px solid var(--accent);border-radius:50%;pointer-events:none;opacity:0;transform:scale(.35)}
+    .click-ripple.active{animation:ripple 1.15s ease-out}
+    .recognition-box{position:absolute;border:2px solid #48d47d;background:rgba(72,212,125,.08);pointer-events:none;opacity:0;transition:opacity .18s}
+    .recognition-box.active{opacity:1}.recognition-box span{position:absolute;right:-2px;top:-24px;background:#48d47d;color:#07130b;padding:2px 7px;font-size:11px;font-weight:700}
+    @keyframes ripple{0%{opacity:1;transform:scale(.35)}75%{opacity:.75}100%{opacity:0;transform:scale(1.5)}}
+    .frame-empty{color:var(--muted);text-align:center;padding:32px}
+    .frame-empty strong{display:block;color:#eef1f7;font-size:18px;margin-bottom:6px}
+    label{display:block;color:var(--muted);margin:10px 0 5px}
+    select,textarea,button{width:100%;border-radius:9px;border:1px solid var(--line);background:#101218;color:#fff;padding:10px;font:inherit}
+    textarea{height:120px;resize:vertical}
+    button{margin-top:14px;background:var(--accent);border:0;font-weight:700;cursor:pointer}
+    button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #fff;outline-offset:2px}
+    .job{padding:10px;border-bottom:1px solid var(--line);cursor:pointer}
+    .job:hover{background:#20242d}
+    .tag{font-size:12px;color:#111;background:#9ba3b4;border-radius:20px;padding:2px 8px}
+    .succeeded{background:#5ee095}.failed,.timed_out{background:#ff6b6b}.running{background:#ffd166}
+    .event{padding:9px 0;border-bottom:1px solid var(--line)}
+    .event time{color:var(--muted);font-size:12px}.event b{color:#ff9b7a}.empty{color:var(--muted)}
+    .artifacts{display:grid;gap:7px}.artifact{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;color:#eef1f7;text-decoration:none}.artifact:hover{border-color:var(--accent)}.artifact small{color:var(--muted)}
+    @media(max-width:760px){
+      header{height:58px;padding:0 18px}
+      h1{font-size:17px}
+      main{display:flex;flex-direction:column;height:auto;padding:14px;gap:14px}
+      section{overflow:visible}
+      .phone{min-height:620px}
+      .frame-stage{min-height:620px}.phone img{width:100%;height:auto;max-height:none}
+    }
+  </style>
+</head>
+<body>
+  <header><h1>FreeCoding · 可视化应用自动化 API</h1></header>
+  <main>
+    <section>
+      <form id="ask">
+        <label for="target">目标应用</label>
+        <select id="target"><option value="meituan">美团问小团</option><option value="lingbao">王者荣耀灵宝</option><option value="xiaohuoren">抖音小火人</option></select>
+        <label for="question">问题</label>
+        <textarea id="question">请介绍一下你能提供哪些帮助？</textarea>
+        <button>提交自动化任务</button>
+      </form>
+      <h3>最近任务</h3><div id="jobs" class="empty">暂无任务</div>
+    </section>
+    <section class="phone">
+      <div class="frame-stage" id="frame-stage">
+        <div id="frame-empty" class="frame-empty"><strong>等待运行画面</strong>提交任务后，这里会显示真实应用窗口、点击提示和识别框。</div>
+        <img id="frame" alt="真实应用运行画面" hidden>
+        <div id="click-ripple" class="click-ripple"></div>
+        <div id="recognition-box" class="recognition-box"><span id="recognition-label">OCR</span></div>
+      </div>
+    </section>
+    <section><h3 id="title">操作日志</h3><div id="events" class="empty">选择或提交一个任务后显示日志</div><h3>运行产物</h3><div id="artifacts" class="artifacts empty">任务结束后生成日志、最终画面和录屏。</div></section>
+  </main>
+  <script>
+    let active=null,timer=null,lastLogs=[],lastVisualSequence=0,visualQueue=[],visualPlaying=false;
+    const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    async function refreshJobs(){const rows=await fetch('/v1/jobs').then(r=>r.json());jobs.innerHTML=rows.length?rows.map(j=>`<div class="job" data-id="${j.id}"><span class="tag ${j.status}">${j.status}</span> ${esc(j.target)}<br><small>${esc(j.question)}</small></div>`).join(''):'暂无任务';document.querySelectorAll('.job').forEach(x=>x.onclick=()=>select(x.dataset.id));}
+    function placeVisual(event){const d=event?.data||{},w=Number(d.width),h=Number(d.height);if(!w||!h||frame.hidden)return;const image=frame.getBoundingClientRect(),stage=document.getElementById('frame-stage').getBoundingClientRect(),left=image.left-stage.left,top=image.top-stage.top;if(event.kind==='click'&&Number.isFinite(Number(d.x))){const marker=document.getElementById('click-ripple');marker.style.left=`${left+Number(d.x)/w*image.width-22}px`;marker.style.top=`${top+Number(d.y)/h*image.height-22}px`;marker.classList.remove('active');void marker.offsetWidth;marker.classList.add('active')}if(event.kind==='recognition'&&Array.isArray(d.box)){const [x1,y1,x2,y2]=d.box.map(Number),box=document.getElementById('recognition-box');box.style.left=`${left+x1/w*image.width}px`;box.style.top=`${top+y1/h*image.height}px`;box.style.width=`${(x2-x1)/w*image.width}px`;box.style.height=`${(y2-y1)/h*image.height}px`;document.getElementById('recognition-label').textContent=`${d.method||'OCR'}${d.confidence?` ${(d.confidence*100).toFixed(0)}%`:''}`;box.classList.add('active')}}
+    async function playVisualQueue(){if(visualPlaying)return;visualPlaying=true;while(visualQueue.length){const event=visualQueue.shift();placeVisual(event);await new Promise(resolve=>setTimeout(resolve,event.kind==='click'?650:900))}visualPlaying=false}
+    function updateVisual(logs){const visuals=logs.filter(e=>e.sequence>lastVisualSequence&&(e.kind==='click'||(e.kind==='recognition'&&e.data?.box)));if(!visuals.length)return;lastVisualSequence=visuals[visuals.length-1].sequence;visualQueue.push(...visuals);playVisualQueue()}
+    async function select(id){active=id;lastVisualSequence=0;visualQueue=[];visualPlaying=false;document.getElementById('click-ripple').classList.remove('active');document.getElementById('recognition-box').classList.remove('active');frame.hidden=false;document.getElementById('frame-empty').hidden=true;clearInterval(timer);await refresh();timer=setInterval(refresh,700)}
+    async function refresh(){if(!active)return;const [job,logs]=await Promise.all([fetch(`/v1/jobs/${active}`).then(r=>r.json()),fetch(`/v1/jobs/${active}/events`).then(r=>r.json())]);lastLogs=logs;title.textContent=`操作日志 · ${job.status}`;events.innerHTML=logs.map(e=>`<div class="event"><time>${new Date(e.at).toLocaleTimeString()}</time> <b>${esc(e.kind)}</b><br>${esc(e.message)}</div>`).join('');artifacts.innerHTML=job.artifacts.length?job.artifacts.map(a=>`<a class="artifact" href="${esc(a.url)}"><span>${esc(a.name)}</span><small>${esc(a.kind)}</small></a>`).join(''):'任务结束后生成日志、最终画面和录屏。';frame.onload=()=>updateVisual(lastLogs);frame.src=`/v1/jobs/${active}/frame?t=${Date.now()}`;if(job.finished_at){clearInterval(timer);await refreshJobs()}}
+    ask.onsubmit=async e=>{e.preventDefault();const body={target:target.value,question:question.value};const job=await fetch('/v1/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json());await refreshJobs();select(job.id)};
+    refreshJobs();setInterval(refreshJobs,3000);
+  </script>
+</body>
+</html>
