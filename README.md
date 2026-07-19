@@ -109,6 +109,18 @@ flowchart LR
 
 ## 快速开始
 
+### 一键启动（Windows）
+
+克隆或下载仓库后，直接双击根目录的 [`start_freecoding.bat`](start_freecoding.bat)。脚本会：
+
+- 始终从 FreeCoding 项目目录启动，避免相对路径失效；
+- 使用项目内的 `.venv`，首次运行时自动创建并安装运行依赖；
+- 在缺少 `.env` 时从 `.env.example` 创建一份本地配置；
+- 检测 8000 端口上的 FreeCoding 是否已经运行，避免重复启动；
+- 启动本地 API 并打开演示页面，窗口中按 `Ctrl+C` 即可停止。
+
+首次生成的 `.env` 使用 `mock` 驱动，可以直接查看接口和演示页面。连接 vivo 真机前仍需按下文填写 ADB 路径、设备序列号和 `vivo_adb` 驱动。
+
 ### 1. 获取代码并创建虚拟环境
 
 ```powershell
