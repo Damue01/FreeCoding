@@ -220,35 +220,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=400,
             )
 
-        if payload.stream:
-
-            async def generate_chat_stream():
-                job = await execute_protocol(
-                    target,
-                    question,
-                    payload.user,
-                    "openai-chat-completions",
-                )
-                if job.status != JobStatus.SUCCEEDED or job.answer is None:
-                    yield sse_data(
-                        error_body(
-                            job.error or "application automation failed",
-                            "server_error",
-                            "automation_failed",
-                        )
-                    )
-                    yield "data: [DONE]\n\n"
-                    return
-                for chunk in chat_completion_chunks(job, payload.model):
-                    yield sse_data(chunk)
-                yield "data: [DONE]\n\n"
-
-            return StreamingResponse(
-                generate_chat_stream(),
-                media_type="text/event-stream",
-                headers={"Cache-Control": "no-cache"},
-            )
-
         job = await execute_protocol(
             target,
             question,
@@ -264,6 +235,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 status_code=502,
             )
+
+        if payload.stream:
+
+            async def generate_chat_stream():
+                for chunk in chat_completion_chunks(job, payload.model):
+                    yield sse_data(chunk)
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                generate_chat_stream(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache"},
+            )
+
         return chat_completion(job, payload.model)
 
     @app.post("/v1/responses")
@@ -292,34 +277,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=400,
             )
 
-        if payload.stream:
-
-            async def generate_response_stream():
-                job = await execute_protocol(
-                    target,
-                    question,
-                    payload.user,
-                    "openai-responses",
-                )
-                if job.status != JobStatus.SUCCEEDED or job.answer is None:
-                    yield response_sse(
-                        "error",
-                        error_body(
-                            job.error or "application automation failed",
-                            "server_error",
-                            "automation_failed",
-                        ),
-                    )
-                    return
-                for event, value in responses_stream_events(job, payload):
-                    yield response_sse(event, value)
-
-            return StreamingResponse(
-                generate_response_stream(),
-                media_type="text/event-stream",
-                headers={"Cache-Control": "no-cache"},
-            )
-
         job = await execute_protocol(
             target,
             question,
@@ -335,6 +292,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 status_code=502,
             )
+
+        if payload.stream:
+
+            async def generate_response_stream():
+                for event, value in responses_stream_events(job, payload):
+                    yield response_sse(event, value)
+
+            return StreamingResponse(
+                generate_response_stream(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache"},
+            )
+
         return response_object(job, payload)
 
     @app.post("/v1/messages")
@@ -365,38 +335,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if user is not None and not isinstance(user, str):
             user = str(user)
 
-        if payload.stream:
-            request_id = anthropic_request_id()
-
-            async def generate_anthropic_stream():
-                job = await execute_protocol(
-                    target,
-                    question,
-                    user,
-                    "anthropic-messages",
-                )
-                if job.status != JobStatus.SUCCEEDED or job.answer is None:
-                    yield anthropic_sse(
-                        "error",
-                        anthropic_error_body(
-                            job.error or "application automation failed",
-                            "api_error",
-                            request_id,
-                        ),
-                    )
-                    return
-                for event, value in anthropic_stream_events(job, payload):
-                    yield anthropic_sse(event, value)
-
-            return StreamingResponse(
-                generate_anthropic_stream(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "request-id": request_id,
-                },
-            )
-
         job = await execute_protocol(
             target,
             question,
@@ -409,6 +347,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 502,
                 "api_error",
             )
+
+        if payload.stream:
+            request_id = anthropic_request_id()
+
+            async def generate_anthropic_stream():
+                for event, value in anthropic_stream_events(job, payload):
+                    yield anthropic_sse(event, value)
+
+            return StreamingResponse(
+                generate_anthropic_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "request-id": request_id,
+                },
+            )
+
         request_id = anthropic_request_id()
         return JSONResponse(
             anthropic_message_object(job, payload),

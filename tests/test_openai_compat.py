@@ -207,3 +207,33 @@ def test_xiaohuoren_is_a_separate_openai_model(tmp_path):
             item for item in models["models"] if item["slug"] == "douyin_xiaohuoren"
         )
         assert catalog["display_name"] == "Douyin Xiaohuoren"
+
+
+def test_responses_stream_returns_http_error_before_sse_on_automation_failure(
+    tmp_path,
+):
+    app = create_app(
+        Settings(
+            _env_file=None,
+            driver="mock",
+            enabled_targets="meituan",
+            config_dir=tmp_path / "missing-config",
+            artifact_dir=tmp_path / "artifacts",
+            recording_enabled=False,
+            job_timeout_seconds=5,
+        )
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/responses",
+            json={
+                "model": "meituan_xiaotuan",
+                "input": "这个请求不应开启不完整的 SSE 流",
+                "stream": True,
+            },
+        )
+
+    assert response.status_code == 502
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json()["error"]["code"] == "automation_failed"
+    assert "缺少目标流程配置" in response.json()["error"]["message"]
